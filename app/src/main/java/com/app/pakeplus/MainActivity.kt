@@ -18,6 +18,7 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebView.WebViewTransport
 import android.webkit.URLUtil
 import androidx.activity.enableEdgeToEdge
 // import android.view.Menu
@@ -126,6 +127,7 @@ class MainActivity : AppCompatActivity() {
         webView.setDownloadListener { url, _, _, _, _ ->
             if (url.isNullOrBlank()) return@setDownloadListener
             val safeUrl = if (URLUtil.isNetworkUrl(url)) url else return@setDownloadListener
+            Log.i("WebViewClient", "DownloadListener open external: $safeUrl")
             try {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(safeUrl)))
             } catch (e: Exception) {
@@ -349,6 +351,20 @@ class MainActivity : AppCompatActivity() {
             val injectJs = assets.open("custom.js").bufferedReader().use { it.readText() }
             view?.evaluateJavascript(injectJs, null)
         }
+
+        override fun shouldOverrideUrlLoading(
+            view: WebView?,
+            request: WebResourceRequest?
+        ): Boolean {
+            val url = request?.url?.toString() ?: return false
+            // For main-frame HTTP/HTTPS, keep in WebView
+            if (url.startsWith("http://") || url.startsWith("https://")) {
+                return false
+            }
+            // Delegate non-http(s) handling to legacy path for external schemes
+            Log.i("WebViewClient", "Override non-http(s): $url")
+            return shouldOverrideUrlLoading(view, url)
+        }
     }
 
     inner class MyChromeClient : WebChromeClient() {
@@ -364,6 +380,35 @@ class MainActivity : AppCompatActivity() {
 
         override fun onHideCustomView() {
             super.onHideCustomView()
+        }
+
+        override fun onCreateWindow(
+            view: WebView?,
+            isDialog: Boolean,
+            isUserGesture: Boolean,
+            resultMsg: android.os.Message?
+        ): Boolean {
+            if (view == null || resultMsg == null) return false
+            val transport = resultMsg.obj as? WebViewTransport ?: return false
+            val childWebView = WebView(view.context)
+            childWebView.webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(
+                    v: WebView?,
+                    request: WebResourceRequest?
+                ): Boolean {
+                    val targetUrl = request?.url?.toString() ?: return true
+                    Log.i("WebViewClient", "TargetBlank open external: $targetUrl")
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)))
+                    } catch (e: Exception) {
+                        Log.e("WebViewClient", "Failed to open target=_blank: $targetUrl", e)
+                    }
+                    return true
+                }
+            }
+            transport.webView = childWebView
+            resultMsg.sendToTarget()
+            return true
         }
     }
 }
