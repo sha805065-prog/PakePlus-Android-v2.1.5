@@ -18,6 +18,7 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.URLUtil
 import androidx.activity.enableEdgeToEdge
 // import android.view.Menu
 // import android.view.WindowInsets
@@ -120,6 +121,17 @@ class MainActivity : AppCompatActivity() {
 
         // clear cache
         webView.clearCache(true)
+
+        // open download links in external browser
+        webView.setDownloadListener { url, _, _, _, _ ->
+            if (url.isNullOrBlank()) return@setDownloadListener
+            val safeUrl = if (URLUtil.isNetworkUrl(url)) url else return@setDownloadListener
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(safeUrl)))
+            } catch (e: Exception) {
+                Log.e("WebViewClient", "Failed to open download url: $safeUrl", e)
+            }
+        }
 
         // inject js
         webView.webViewClient = MyWebViewClient(debug)
