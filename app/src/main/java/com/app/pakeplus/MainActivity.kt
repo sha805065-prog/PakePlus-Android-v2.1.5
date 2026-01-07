@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
-import com.app.pakeplus.BuildConfig
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -60,9 +59,17 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val packageInfo = packageManager.getPackageInfo(packageName, 0)
+        val versionName = packageInfo.versionName ?: "unknown"
+        val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            packageInfo.versionCode.toLong()
+        }
         Log.i(
             "AppStartup",
-            "Build versionName=${BuildConfig.VERSION_NAME} versionCode=${BuildConfig.VERSION_CODE} ts=${System.currentTimeMillis()}"
+            "Build versionName=$versionName versionCode=$versionCode ts=${System.currentTimeMillis()}"
         )
         // parseJsonWithNative
         val config = parseJsonWithNative(this, "app.json")
