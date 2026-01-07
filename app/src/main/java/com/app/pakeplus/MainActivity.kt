@@ -42,7 +42,9 @@ import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.IOException
 import java.io.InputStreamReader
+import java.net.URI
 import java.net.URISyntaxException
+import java.util.Locale
 import kotlin.math.abs
 
 class MainActivity : AppCompatActivity() {
@@ -56,6 +58,10 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.i(
+            "AppStartup",
+            "Build versionName=${BuildConfig.VERSION_NAME} versionCode=${BuildConfig.VERSION_CODE} ts=${System.currentTimeMillis()}"
+        )
         // parseJsonWithNative
         val config = parseJsonWithNative(this, "app.json")
         val fullScreen = config?.get("fullScreen") as? Boolean ?: false
@@ -110,6 +116,7 @@ class MainActivity : AppCompatActivity() {
             loadWithOverviewMode = true
             mediaPlaybackRequiresUserGesture = false
             setSupportMultipleWindows(true)
+            javaScriptCanOpenWindowsAutomatically = true
         }
         webView
         // set user agent
@@ -359,6 +366,15 @@ class MainActivity : AppCompatActivity() {
             val url = request?.url?.toString() ?: return false
             // For main-frame HTTP/HTTPS, keep in WebView
             if (url.startsWith("http://") || url.startsWith("https://")) {
+                if (request?.isForMainFrame == true && isLikelyDownloadUrl(url)) {
+                    Log.i("WebViewClient", "MainFrame download open external: $url")
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    } catch (e: Exception) {
+                        Log.e("WebViewClient", "Failed to open download url: $url", e)
+                    }
+                    return true
+                }
                 return false
             }
             // Delegate non-http(s) handling to legacy path for external schemes
@@ -389,6 +405,7 @@ class MainActivity : AppCompatActivity() {
             resultMsg: android.os.Message?
         ): Boolean {
             if (view == null || resultMsg == null) return false
+            Log.i("WebViewClient", "onCreateWindow gesture=$isUserGesture dialog=$isDialog")
             val transport = resultMsg.obj as? WebViewTransport ?: return false
             val childWebView = WebView(view.context)
             childWebView.webViewClient = object : WebViewClient() {
@@ -396,12 +413,13 @@ class MainActivity : AppCompatActivity() {
                     v: WebView?,
                     request: WebResourceRequest?
                 ): Boolean {
-                    val targetUrl = request?.url?.toString() ?: return true
-                    Log.i("WebViewClient", "TargetBlank open external: $targetUrl")
+                    val rawUrl = request?.url?.toString() ?: return true
+                    val resolvedUrl = resolveUrl(view.url, rawUrl)
+                    Log.i("WebViewClient", "TargetBlank open external: $resolvedUrl")
                     try {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)))
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(resolvedUrl)))
                     } catch (e: Exception) {
-                        Log.e("WebViewClient", "Failed to open target=_blank: $targetUrl", e)
+                        Log.e("WebViewClient", "Failed to open target=_blank: $resolvedUrl", e)
                     }
                     return true
                 }
@@ -409,6 +427,33 @@ class MainActivity : AppCompatActivity() {
             transport.webView = childWebView
             resultMsg.sendToTarget()
             return true
+        }
+    }
+
+    private fun isLikelyDownloadUrl(url: String): Boolean {
+        val normalized = url.lowercase(Locale.US)
+        if (normalized.contains("/downfile/") || normalized.contains("/download/")) {
+            return true
+        }
+        return normalized.endsWith(".apk") ||
+            normalized.endsWith(".zip") ||
+            normalized.endsWith(".rar") ||
+            normalized.endsWith(".7z") ||
+            normalized.endsWith(".pdf")
+    }
+
+    private fun resolveUrl(baseUrl: String?, targetUrl: String): String {
+        if (targetUrl.startsWith("http://") || targetUrl.startsWith("https://")) {
+            return targetUrl
+        }
+        return try {
+            if (baseUrl.isNullOrBlank()) {
+                targetUrl
+            } else {
+                URI(baseUrl).resolve(targetUrl).toString()
+            }
+        } catch (e: Exception) {
+            targetUrl
         }
     }
 }
