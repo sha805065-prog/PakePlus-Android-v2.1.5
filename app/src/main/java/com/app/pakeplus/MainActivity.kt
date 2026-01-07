@@ -14,6 +14,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.webkit.WebChromeClient
+import android.webkit.JavascriptInterface
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -129,6 +130,11 @@ class MainActivity : AppCompatActivity() {
 
         // clear cache
         webView.clearCache(true)
+
+        // JS bridge for window.App.openBrowser / window.native.openOuter
+        val jsBridge = JsBridge(this)
+        webView.addJavascriptInterface(jsBridge, "App")
+        webView.addJavascriptInterface(jsBridge, "native")
 
         // open download links in external browser
         webView.setDownloadListener { url, _, _, _, _ ->
@@ -454,6 +460,29 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             targetUrl
+        }
+    }
+
+    class JsBridge(private val context: Context) {
+        @JavascriptInterface
+        fun openBrowser(url: String?) {
+            openExternal(url, "openBrowser")
+        }
+
+        @JavascriptInterface
+        fun openOuter(url: String?) {
+            openExternal(url, "openOuter")
+        }
+
+        private fun openExternal(url: String?, source: String) {
+            if (url.isNullOrBlank()) return
+            val safeUrl = if (URLUtil.isNetworkUrl(url)) url else return
+            Log.i("WebViewClient", "JsBridge $source open external: $safeUrl")
+            try {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(safeUrl)))
+            } catch (e: Exception) {
+                Log.e("WebViewClient", "JsBridge failed to open: $safeUrl", e)
+            }
         }
     }
 }
